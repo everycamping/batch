@@ -35,7 +35,7 @@ public class OrderProduct {
     private Product product;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "settlement_id")
+    @JoinColumn(name = "dailySettlement_id")
     private DailySettlement dailySettlement;
 
     @Enumerated(EnumType.STRING)

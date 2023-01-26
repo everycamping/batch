@@ -28,7 +28,7 @@ public class DailySettlement {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "customer_id")
+    @JoinColumn(name = "seller_id")
     private Seller seller;
 
     private Long amount;
