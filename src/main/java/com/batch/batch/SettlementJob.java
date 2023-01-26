@@ -1,14 +1,13 @@
 package com.batch.batch;
 
 import com.batch.domain.order.OrderProduct;
+import com.batch.domain.order.OrderProductRepository;
 import com.batch.domain.order.OrderStatus;
 import com.batch.domain.settlement.DailySettlement;
 import com.batch.domain.settlement.DailySettlementRepository;
 import java.time.LocalDate;
 import java.time.LocalTime;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Optional;
 import javax.persistence.EntityManager;
 import javax.persistence.EntityManagerFactory;
@@ -19,15 +18,10 @@ import org.springframework.batch.core.Step;
 import org.springframework.batch.core.configuration.annotation.JobBuilderFactory;
 import org.springframework.batch.core.configuration.annotation.StepBuilderFactory;
 import org.springframework.batch.item.ItemProcessor;
-import org.springframework.batch.item.data.RepositoryItemReader;
 import org.springframework.batch.item.database.JpaItemWriter;
 import org.springframework.batch.item.database.JpaPagingItemReader;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.util.MethodInvoker;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -39,6 +33,8 @@ public class SettlementJob {
     private final EntityManagerFactory entityManagerFactory;
     private final EntityManager entityManager;
     private final DailySettlementRepository dailySettlementRepository;
+
+    private final OrderProductRepository orderProductRepository;
 
 
     private final int chunkSize = 10;
@@ -68,6 +64,8 @@ public class SettlementJob {
 
             orderProduct.setStatus(OrderStatus.SETTLEMENT);
             orderProduct.setDailySettlement(dailySettlement);
+
+            orderProductRepository.save(orderProduct);
 
             return addAmount(orderProduct);
         };
@@ -122,34 +120,6 @@ public class SettlementJob {
         return reader;
     }
 
-//    @Bean
-//    public RepositoryItemReader<OrderProduct> Step1Writer() {
-//
-//        RepositoryItemReader<OrderProduct> reader = new RepositoryItemReader<>() {
-//
-//            @Override
-//            protected List<OrderProduct> doPageRead() throws Exception {
-//                Pageable pageRequest = PageRequest.of(page, pageSize, sort);
-//
-//                MethodInvoker invoker = createMethodInvoker(repository, methodName);
-//
-//                List<Object> parameters = new ArrayList<>();
-//
-//                if(arguments != null && arguments.size() > 0) {
-//                    parameters.addAll(arguments);
-//                }
-//
-//                parameters.add(pageRequest);
-//
-//                invoker.setArguments(parameters.toArray());
-//
-//                Page<T> curPage = (Page<T>) doInvoke(invoker);
-//
-//                return curPage.getContent();
-//            }
-//        };
-//    }
-
     @Bean
     public JpaItemWriter<DailySettlement> Step1Writer() {
         JpaItemWriter<DailySettlement> jpaItemWriter = new JpaItemWriter<>();
@@ -157,5 +127,4 @@ public class SettlementJob {
 
         return jpaItemWriter;
     }
-
 }
