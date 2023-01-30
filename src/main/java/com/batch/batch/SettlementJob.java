@@ -33,7 +33,6 @@ public class SettlementJob {
     private final EntityManagerFactory entityManagerFactory;
     private final EntityManager entityManager;
     private final DailySettlementRepository dailySettlementRepository;
-
     private final OrderProductRepository orderProductRepository;
 
 
@@ -61,13 +60,13 @@ public class SettlementJob {
 
             DailySettlement dailySettlement = addAmount(orderProduct);
             entityManager.persist(dailySettlement); //영속화
-
+            
+            //정산 상태로 변경
             orderProduct.setStatus(OrderStatus.SETTLEMENT);
             orderProduct.setDailySettlement(dailySettlement);
-
             orderProductRepository.save(orderProduct);
 
-            return addAmount(orderProduct);
+            return dailySettlement;
         };
     }
 
