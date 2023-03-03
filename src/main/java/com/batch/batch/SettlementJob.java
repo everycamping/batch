@@ -1,15 +1,13 @@
 package com.batch.batch;
 
 import com.batch.domain.order.OrderProduct;
-import com.batch.domain.order.OrderProductRepository;
 import com.batch.domain.order.OrderStatus;
+import com.batch.domain.seller.Seller;
 import com.batch.domain.settlement.DailySettlement;
 import com.batch.domain.settlement.DailySettlementRepository;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.HashMap;
-import java.util.Optional;
-import javax.persistence.EntityManager;
 import javax.persistence.EntityManagerFactory;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,6 +18,7 @@ import org.springframework.batch.core.configuration.annotation.StepBuilderFactor
 import org.springframework.batch.item.ItemProcessor;
 import org.springframework.batch.item.database.JpaItemWriter;
 import org.springframework.batch.item.database.JpaPagingItemReader;
+import org.springframework.batch.repeat.RepeatStatus;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -31,68 +30,52 @@ public class SettlementJob {
     private final JobBuilderFactory jobBuilderFactory;
     private final StepBuilderFactory stepBuilderFactory;
     private final EntityManagerFactory entityManagerFactory;
-    private final EntityManager entityManager;
     private final DailySettlementRepository dailySettlementRepository;
-    private final OrderProductRepository orderProductRepository;
 
 
+    private HashMap<Seller, Long> sellerRevenueMap = new HashMap<>();
     private final int chunkSize = 10;
 
     @Bean
     public Job SettlementJobBuild() {
         return jobBuilderFactory.get("SettlementJob")
-            .start(SettlementJobStep1())
+            .start(step1())
+            .next(step2())
             .build();
     }
 
     @Bean
-    public Step SettlementJobStep1() {
-        return stepBuilderFactory.get("SettlementJob_step1")
-            .<OrderProduct, DailySettlement>chunk(chunkSize)
-            .reader(Step1Reader())
-            .processor(Step1Processor())
-            .writer(Step1Writer())
+    public Step step1() {
+        return stepBuilderFactory.get("step1")
+            .<OrderProduct, OrderProduct>chunk(chunkSize)
+            .reader(orderProductReader())
+            .processor(setStatusProcessor())
+            .processor(updateRevenueProcessor())
+            .writer(orderProductWriter())
             .build();
     }
 
-    private ItemProcessor<OrderProduct, DailySettlement> Step1Processor() {
-        return orderProduct -> {
+    @Bean()
+    public Step step2() {
+        return stepBuilderFactory.get("step2")
+            .tasklet((contribution, chunkContext) -> {
 
-            DailySettlement dailySettlement = addAmount(orderProduct);
-            entityManager.persist(dailySettlement); //영속화
-            
-            //정산 상태로 변경
-            orderProduct.setStatus(OrderStatus.SETTLEMENT);
-            orderProduct.setDailySettlement(dailySettlement);
-            orderProductRepository.save(orderProduct);
+                for(Seller seller : sellerRevenueMap.keySet()) {
+                    dailySettlementRepository.save(
+                        DailySettlement.builder()
+                            .seller(seller)
+                            .targetDate(LocalDate.now())
+                            .amount(sellerRevenueMap.get(seller))
+                            .build()
+                    );
+                }
 
-            return dailySettlement;
-        };
-    }
-
-    private DailySettlement addAmount(OrderProduct orderProduct) {
-        Optional<DailySettlement> optionalDailySettlement =
-            dailySettlementRepository.findBySellerIdAndTargetDate(
-                orderProduct.getProduct().getSeller().getId(),
-                LocalDate.now().minusDays(1));
-
-        //update
-        if(optionalDailySettlement.isPresent()) {
-            DailySettlement dailySettlement = optionalDailySettlement.get();
-            dailySettlement.setAmount(dailySettlement.getAmount() + orderProduct.getAmount());
-            return dailySettlement;
-        }
-        //insert
-        return DailySettlement.builder()
-            .targetDate(LocalDate.now().minusDays(1))
-            .seller(orderProduct.getProduct().getSeller())
-            .amount(orderProduct.getAmount().longValue())
-            .build();
+                return RepeatStatus.FINISHED;
+            }).build();
     }
 
     @Bean
-    public JpaPagingItemReader<OrderProduct> Step1Reader() {
-
+    public JpaPagingItemReader<OrderProduct> orderProductReader() {
         LocalDate yesterday = LocalDate.now().minusDays(1);
 
         HashMap<String, Object> param = new HashMap<>();
@@ -107,7 +90,7 @@ public class SettlementJob {
             }
         };
 
-        reader.setName("step1Reader");
+        reader.setName("orderProductReader");
         reader.setEntityManagerFactory(entityManagerFactory);
         reader.setPageSize(chunkSize);
         reader.setQueryString("select o from OrderProduct o"
@@ -120,10 +103,35 @@ public class SettlementJob {
     }
 
     @Bean
-    public JpaItemWriter<DailySettlement> Step1Writer() {
-        JpaItemWriter<DailySettlement> jpaItemWriter = new JpaItemWriter<>();
-        jpaItemWriter.setEntityManagerFactory(entityManagerFactory);
+    public ItemProcessor<OrderProduct, OrderProduct> setStatusProcessor() {
+        return orderProduct -> {
+            orderProduct.setStatus(OrderStatus.SETTLEMENT);
+            return orderProduct;
+        };
+    }
 
+    @Bean
+    public ItemProcessor<OrderProduct, OrderProduct> updateRevenueProcessor() {
+        return orderProduct -> {
+
+            Seller seller = orderProduct.getProduct().getSeller();
+
+            if(sellerRevenueMap.containsKey(seller)) {
+                sellerRevenueMap.put(seller
+                    , sellerRevenueMap.get(seller) + Long.valueOf(orderProduct.getAmount()));
+
+                return orderProduct;
+            }
+
+            sellerRevenueMap.put(seller, Long.valueOf(orderProduct.getAmount()));
+            return orderProduct;
+        };
+    }
+
+    @Bean
+    public JpaItemWriter<OrderProduct> orderProductWriter() {
+        JpaItemWriter<OrderProduct> jpaItemWriter = new JpaItemWriter<>();
+        jpaItemWriter.setEntityManagerFactory(entityManagerFactory);
         return jpaItemWriter;
     }
 }
