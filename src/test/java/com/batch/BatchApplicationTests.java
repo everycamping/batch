@@ -47,7 +47,7 @@ class BatchApplicationTests {
     public void job_test() throws Exception {
 
         //given
-        setDate();
+        setDateSales();
         JobParameters jobParameters = new JobParametersBuilder()
             .addString("job.name", "SettlementJob v=1")
             .toJobParameters();
@@ -56,7 +56,7 @@ class BatchApplicationTests {
         JobExecution jobExecution = jobLauncherTestUtils.launchJob(jobParameters);
 
         //then
-        Assert.assertEquals(jobExecution.getStatus(), BatchStatus.COMPLETED);
+        Assert.assertEquals(BatchStatus.COMPLETED, jobExecution.getStatus());
 
         List<DailySettlement> list = dailySettlementRepository.findAll();
         Assert.assertEquals(2, list.size());
@@ -65,7 +65,7 @@ class BatchApplicationTests {
     }
 
 
-    private void setDate() {
+    private void setDateSales() {
 
         Seller seller1 = sellerRepository.save(Seller.builder().build());
         Seller seller2 = sellerRepository.save(Seller.builder().build());
